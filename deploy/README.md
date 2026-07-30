@@ -59,19 +59,28 @@ node -v
 sudo yum install -y nginx        # 阿里云 Linux / CentOS
 # sudo apt install -y nginx      # Ubuntu / Debian
 
-# 3. 站点配置，把 APP_DOMAIN 换成真实域名
+# 3. 站点配置。默认是 default_server + server_name _，
+#    所以直接用公网 IP 访问 http://<IP>/ 就能通，不需要域名。
 sudo cp deploy/nginx.conf /etc/nginx/conf.d/fan-bus.conf
-sudo sed -i 's/APP_DOMAIN/your-domain.com/' /etc/nginx/conf.d/fan-bus.conf
 sudo nginx -t && sudo systemctl enable --now nginx
+
+#    若报 "a duplicate default server"，是发行版自带的默认站点占了 80：
+#    sudo mv /etc/nginx/conf.d/default.conf{,.disabled}   # RHEL / 阿里云 Linux
+#    sudo rm /etc/nginx/sites-enabled/default             # Debian / Ubuntu
 
 # 4. 应用服务
 sudo cp deploy/fan-bus.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now fan-bus
 
-# 5. HTTPS
+# 5. HTTPS（需要真实域名，certbot 无法为裸 IP 签发）
+#    先把域名写进 nginx.conf 的 server_name，再：
 sudo certbot --nginx -d your-domain.com
 ```
+
+访问 `http://<公网IP>/` 即可。若不通，依次查：nginx 是否在跑、应用是否在跑
+（`./deploy/service.sh status`）、阿里云**安全组**是否放开了 80 端口入方向。
+最后这条最容易漏 —— 服务器本机 `curl localhost` 通但外网打不开，基本都是安全组。
 
 Ubuntu/Debian 的 nginx 用 `sites-available/` + `sites-enabled/` 软链，不是
 `conf.d/`，第 3 步要相应调整。
