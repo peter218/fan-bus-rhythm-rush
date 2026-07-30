@@ -14,8 +14,40 @@
 | 文件 | 用途 |
 |---|---|
 | `nginx.conf` | 站点配置，装到 `/etc/nginx/conf.d/` |
-| `fan-bus.service` | systemd 单元，管进程和自动重启 |
-| `deploy.sh` | 拉代码 → 装依赖 → 构建 → 重启 → 健康检查 |
+| `service.sh` | **纯启停**：start / stop / restart / status / logs |
+| `fan-bus.service` | systemd 单元（可选，替代 `service.sh` 做开机自启） |
+| `deploy.sh` | 部署：拉代码 → 装依赖 → 构建 → 重启 → 健康检查 |
+
+## 启停（`service.sh`）
+
+```bash
+./deploy/service.sh start      # 先起 nginx，再起应用
+./deploy/service.sh stop
+./deploy/service.sh restart
+./deploy/service.sh status     # 两者状态 + HTTP 健康码
+./deploy/service.sh logs       # 跟踪应用日志
+```
+
+**它完全不碰 git**——不拉代码、不切分支、不构建，只启动 `dist/` 里现有的东西。
+换代码版本用 `deploy.sh`，两者职责分开。
+
+不需要装 systemd 单元也能用：应用进程由脚本自己管（pid 文件在 `.run/app.pid`，
+日志在 `.run/app.log`），nginx 有 systemd 就走 `systemctl`，没有就直接调 `nginx`
+二进制。
+
+环境变量可覆盖：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `APP_HOST` | `127.0.0.1` | 应用监听地址，只给 nginx 连 |
+| `APP_PORT` | `3000` | 应用端口 |
+| `MANAGE_NGINX` | `1` | 设 `0` 则只管应用，不碰 nginx |
+
+启动顺序是 **nginx 先、应用后**：应用起来前的几秒 nginx 会返回 502，但站点至少
+是可达的，比整个连接被拒绝更好排查。
+
+脚本会在启动前挡掉两种常见故障：`dist/` 缺失（提示先 `npm run build`）和端口被
+占用（提示可能有残留进程）。
 
 ## 首次安装
 
