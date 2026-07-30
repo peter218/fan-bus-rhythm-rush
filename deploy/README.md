@@ -102,6 +102,61 @@ journalctl -u fan-bus -f          # 应用日志
 sudo tail -f /var/log/nginx/error.log
 ```
 
+## nginx 读不到 /home 下的文件
+
+只影响 `/audio/`（唯一从磁盘直发的路径）。症状是 mp3 悄悄退回 Node，
+`Accept-Ranges` 消失、seek 失效、`Premature close` 继续出现，但页面一切正常
+——所以很容易被忽略。
+
+先确认是不是这个问题：
+
+```bash
+curl -sI http://127.0.0.1/audio/guaihuo.mp3 | grep -i accept-ranges
+# 有 Accept-Ranges: bytes  → nginx 在直发，正常
+# 没有                     → 退回 Node 了，继续往下查
+sudo tail -5 /var/log/nginx/error.log     # 会看到 Permission denied 或 13:
+```
+
+**原因一：目录不可穿越。** nginx worker 以 `nginx` 用户运行，而家目录通常是
+`700`，它进不去：
+
+```bash
+sudo -u nginx test -r /home/admin/fan-bus-rhythm-rush/dist/client/audio/guaihuo.mp3 \
+  && echo "可读" || echo "不可读"
+
+# 放开路径上每一级的执行位（只给 x，不给 r/w，不暴露目录列表）
+chmod o+x /home/admin
+chmod o+x /home/admin/fan-bus-rhythm-rush
+chmod o+x /home/admin/fan-bus-rhythm-rush/dist
+chmod o+x /home/admin/fan-bus-rhythm-rush/dist/client
+chmod -R o+rX /home/admin/fan-bus-rhythm-rush/dist/client/audio
+```
+
+**原因二：SELinux。** RHEL 系（含阿里云 Linux）默认只允许 nginx 读带
+`httpd_sys_content_t` 标签的文件：
+
+```bash
+getenforce                                # Enforcing 才需要处理
+sudo dnf install -y policycoreutils-python-utils   # 提供 semanage
+sudo semanage fcontext -a -t httpd_sys_content_t \
+  "/home/admin/fan-bus-rhythm-rush/dist/client(/.*)?"
+sudo restorecon -Rv /home/admin/fan-bus-rhythm-rush/dist/client
+sudo setsebool -P httpd_read_user_content 1        # 读家目录还需要这个开关
+```
+
+两者都处理完再 `curl -sI` 一次，应该能看到 `Accept-Ranges: bytes`。
+
+嫌麻烦的话有个更省事的办法——把音频挪到 nginx 天然能读的位置：
+
+```bash
+sudo mkdir -p /var/www/fan-bus
+sudo cp -r dist/client/audio /var/www/fan-bus/
+sudo chown -R nginx:nginx /var/www/fan-bus
+# 然后把 nginx.conf 里 location /audio/ 的 root 改成 /var/www/fan-bus
+```
+
+代价是每次部署要重新同步一次音频（可以加到 `deploy.sh` 里）。
+
 ## 这个项目特有的几个坑
 
 **1. 不能用 `npm ci --omit=dev`**
