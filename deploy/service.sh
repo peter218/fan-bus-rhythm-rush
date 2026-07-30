@@ -22,10 +22,14 @@ RUN_DIR="$ROOT/.run"
 PID_FILE="$RUN_DIR/app.pid"
 LOG_FILE="$RUN_DIR/app.log"
 
-APP_HOST="${APP_HOST:-127.0.0.1}"
+APP_HOST="${APP_HOST:-0.0.0.0}"
 APP_PORT="${APP_PORT:-3000}"
 # Skip nginx entirely with MANAGE_NGINX=0 if something else fronts the app.
 MANAGE_NGINX="${MANAGE_NGINX:-1}"
+
+# 0.0.0.0 is an address to bind, not one to connect to, so health checks always
+# dial the loopback no matter what the app is listening on.
+HEALTH_HOST="127.0.0.1"
 
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m !\033[0m %s\n' "$1"; }
@@ -86,7 +90,7 @@ start_app() {
 
   for attempt in $(seq 1 30); do
     if curl -s --noproxy '*' -o /dev/null --max-time 3 \
-         "http://$APP_HOST:$APP_PORT/" 2>/dev/null; then
+         "http://$HEALTH_HOST:$APP_PORT/" 2>/dev/null; then
       log "App answering after ${attempt}s"
       return 0
     fi
@@ -175,7 +179,7 @@ case "${1:-}" in
       printf 'nginx  : stopped\n'
     fi
     code="$(curl -s --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 5 \
-      "http://$APP_HOST:$APP_PORT/" 2>/dev/null || true)"
+      "http://$HEALTH_HOST:$APP_PORT/" 2>/dev/null || true)"
     printf 'health : %s\n' "${code:-unreachable}"
     printf 'log    : %s\n' "$LOG_FILE"
     ;;
@@ -187,7 +191,8 @@ case "${1:-}" in
 
   *)
     printf 'usage: %s {start|stop|restart|status|logs}\n\n' "$0"
-    printf 'env overrides: APP_HOST, APP_PORT, MANAGE_NGINX=0\n'
+    printf 'env overrides: APP_HOST (default 0.0.0.0), APP_PORT, MANAGE_NGINX=0\n'
+    printf 'bind to loopback only: APP_HOST=127.0.0.1 %s start\n' "$0"
     exit 2
     ;;
 esac

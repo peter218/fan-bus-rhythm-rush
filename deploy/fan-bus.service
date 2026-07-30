@@ -22,9 +22,11 @@ User=admin
 Group=admin
 WorkingDirectory=/home/admin/fan-bus-rhythm-rush
 
-# -H 127.0.0.1 keeps the app off every public interface; nginx is the only
-# reachable front door. `vinext start` otherwise defaults to 0.0.0.0.
-ExecStart=/usr/bin/env npm run start -- -H 127.0.0.1
+# Bound to every interface so the app is reachable on :3000 directly, not only
+# through nginx. Change to -H 127.0.0.1 to make nginx the sole front door — on
+# Alibaba Cloud the security group already gates which ports the internet can
+# see, so this mainly affects access from inside the VPC.
+ExecStart=/usr/bin/env npm run start -- -H 0.0.0.0
 ExecReload=/bin/kill -HUP $MAINPID
 
 Environment=NODE_ENV=production
