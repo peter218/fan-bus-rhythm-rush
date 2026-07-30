@@ -1,0 +1,54 @@
+# systemd unit for the fan-bus-rhythm-rush production server.
+#
+# Install:
+#   sudo cp deploy/fan-bus.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fan-bus
+#
+# Logs:
+#   journalctl -u fan-bus -f
+#
+# Adjust User, WorkingDirectory, and the node path if your host differs.
+
+[Unit]
+Description=Fan Bus Rhythm Rush production server
+Documentation=https://github.com/peter218/fan-bus-rhythm-rush
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/fan-bus-rhythm-rush
+
+# -H 127.0.0.1 keeps the app off every public interface; nginx is the only
+# reachable front door. `vinext start` otherwise defaults to 0.0.0.0.
+ExecStart=/usr/bin/env npm run start -- -H 127.0.0.1
+ExecReload=/bin/kill -HUP $MAINPID
+
+Environment=NODE_ENV=production
+Environment=PORT=3000
+# Keep wrangler's log inside the project rather than $HOME.
+Environment=WRANGLER_LOG_PATH=.wrangler/wrangler.log
+
+Restart=always
+RestartSec=3
+# Give a crash loop room to surface in the logs instead of hammering forever.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fan-bus
+
+# The process only ever reads the build output and writes .wrangler/, so it can
+# be locked down fairly tightly.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/admin/fan-bus-rhythm-rush/.wrangler
+
+[Install]
+WantedBy=multi-user.target
