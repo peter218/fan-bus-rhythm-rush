@@ -12,8 +12,14 @@ function concertForScore(score: number) {
   return "街角快闪";
 }
 
-async function getLeaderboard() {
-  const db = getDb();
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+// Returned when there is no D1 binding. A 200 with an empty board keeps the game
+// playable and quiet, rather than making the client show a sync error after
+// every single run on a platform that simply has no leaderboard storage.
+const DISABLED = { leaderboard: [], disabled: true };
+
+async function getLeaderboard(db: Db) {
   const rows = await db
     .select()
     .from(leaderboardScores)
@@ -40,8 +46,10 @@ async function getLeaderboard() {
 
 export async function GET() {
   try {
-    await ensureDbSchema();
-    return Response.json({ leaderboard: await getLeaderboard() });
+    if (!(await ensureDbSchema())) return Response.json(DISABLED);
+    const db = await getDb();
+    if (!db) return Response.json(DISABLED);
+    return Response.json({ leaderboard: await getLeaderboard(db) });
   } catch {
     return Response.json(
       { error: "全局排行榜暂时不可用" },
@@ -78,8 +86,9 @@ export async function POST(request: Request) {
       return Response.json({ error: "排行榜成绩无效" }, { status: 400 });
     }
 
-    await ensureDbSchema();
-    const db = getDb();
+    if (!(await ensureDbSchema())) return Response.json(DISABLED);
+    const db = await getDb();
+    if (!db) return Response.json(DISABLED);
     const score = fans * maxCombo;
     const concert = concertForScore(score);
     const [existing] = await db
@@ -126,7 +135,7 @@ export async function POST(request: Request) {
     }
 
     return Response.json(
-      { leaderboard: await getLeaderboard() },
+      { leaderboard: await getLeaderboard(db) },
       { status: 201 },
     );
   } catch {

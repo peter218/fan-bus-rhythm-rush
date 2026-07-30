@@ -15,9 +15,18 @@ function toRouteErrorMessage(error: unknown) {
   return message;
 }
 
+const NO_D1 = Response.json(
+  {
+    error:
+      "No D1 binding is available. Set the `d1` field in .openai/hosting.json to `DB` and deploy to a platform that provides D1.",
+  },
+  { status: 503 },
+);
+
 export async function GET() {
   try {
-    const db = getDb();
+    const db = await getDb();
+    if (!db) return NO_D1;
     const rows = await db
       .select()
       .from(notes)
@@ -46,7 +55,8 @@ export async function POST(request: Request) {
       return Response.json({ error: "title is required" }, { status: 400 });
     }
 
-    const db = getDb();
+    const db = await getDb();
+    if (!db) return NO_D1;
     const [note] = await db.insert(notes).values({ title, content }).returning();
     return Response.json({ note }, { status: 201 });
   } catch (error) {

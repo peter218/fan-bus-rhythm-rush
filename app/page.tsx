@@ -1940,7 +1940,11 @@ export default function Home() {
           if (!response.ok) throw new Error("Leaderboard sync failed");
           const payload = (await response.json()) as {
             leaderboard?: LeaderboardEntry[];
+            disabled?: boolean;
           };
+          // A deploy without leaderboard storage is not a sync failure, so stay
+          // silent instead of nagging after every run.
+          if (payload.disabled) return;
           if (payload.leaderboard) {
             setLeaderboard(payload.leaderboard);
             setCurrentRankEntryId(playerId);
